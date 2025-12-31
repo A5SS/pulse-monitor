@@ -1,0 +1,101 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  MEMBER
+}
+
+enum ServiceStatus {
+  UP
+  DOWN
+}
+
+enum AlertRuleType {
+  CONSECUTIVE_FAILS
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  refreshTokenHash String?
+  role         UserRole @default(MEMBER)
+  createdAt    DateTime @default(now())
+
+  services Service[]
+}
+
+model Service {
+  id            String       @id @default(uuid())
+  name          String
+  baseUrl       String
+  healthPath    String       @default("/health")
+  method        String       @default("GET")
+  expectedStatus Int         @default(200)
+  timeoutMs     Int          @default(5000)
+  intervalSec   Int          @default(60)
+  enabled       Boolean      @default(true)
+  createdBy     String
+  createdAt     DateTime     @default(now())
+  lastStatus    ServiceStatus?
+  lastLatencyMs Int?
+  lastCheckedAt DateTime?
+
+  createdByUser User         @relation(fields: [createdBy], references: [id])
+  checkRuns     CheckRun[]
+  alertRules    AlertRule[]
+  alertEvents   AlertEvent[]
+
+  @@index([enabled])
+  @@index([lastStatus])
+}
+
+model CheckRun {
+  id          String       @id @default(uuid())
+  serviceId   String
+  timestamp   DateTime     @default(now())
+  status      ServiceStatus
+  statusCode  Int?
+  latencyMs   Int?
+  errorMessage String?
+
+  service     Service      @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@index([serviceId, timestamp])
+  @@index([timestamp])
+}
+
+model AlertRule {
+  id        String         @id @default(uuid())
+  serviceId String
+  type      AlertRuleType
+  threshold Int
+  enabled   Boolean        @default(true)
+
+  service   Service        @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  events    AlertEvent[]
+
+  @@index([serviceId, enabled])
+}
+
+model AlertEvent {
+  id         String   @id @default(uuid())
+  serviceId  String
+  ruleId     String
+  triggeredAt DateTime @default(now())
+  message    String
+
+  service    Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  rule       AlertRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  @@index([serviceId, triggeredAt])
+  @@index([triggeredAt])
+}
+
